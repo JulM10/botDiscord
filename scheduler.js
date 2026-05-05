@@ -57,10 +57,11 @@ async function publishWeeklyRanking(client) {
 function initScheduler(client) {
   scheduledTask = cron.schedule(config.CRON_SCHEDULE, () => {
     publishWeeklyRanking(client);
-  });
+  }, { timezone: 'UTC' });
 
   console.log('[SCHEDULER] ✅ Scheduler iniciado');
   console.log('[SCHEDULER] ⏰ Próxima ejecución: Cada lunes 5 PM ART (20:00 UTC)');
+  console.log('config.CRON_SCHEDULE:', config.CRON_SCHEDULE);
 }
 
 // ==========================================

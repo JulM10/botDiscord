@@ -12,6 +12,63 @@ const riotClient = axios.create({
 });
 
 // ==========================================
+// Mapeo de tier a valor numérico
+// ==========================================
+const TIER_VALUES = {
+  'CHALLENGER': 8,
+  'GRANDMASTER': 7,
+  'MASTER': 6,
+  'DIAMOND': 5,
+  'EMERALD': 4,
+  'PLATINUM': 3,
+  'GOLD': 2,
+  'SILVER': 1,
+  'BRONZE': 0.5,
+  'IRON': 0.25,
+  'UNRANKED': 0
+};
+
+// Mapeo de rank a valor
+const RANK_VALUES = {
+  'I': 4,
+  'II': 3,
+  'III': 2,
+  'IV': 1
+};
+
+// ==========================================
+// Función de comparación jerárquica
+// ==========================================
+function compareRanking(a, b) {
+  // 1. Comparar por tier (descendente)
+  const tierValueA = TIER_VALUES[a.tier] || 0;
+  const tierValueB = TIER_VALUES[b.tier] || 0;
+  
+  if (tierValueA !== tierValueB) {
+    return tierValueB - tierValueA;
+  }
+
+  // 2. Si mismo tier, comparar por rank
+  const rankValueA = RANK_VALUES[a.rank] || 0;
+  const rankValueB = RANK_VALUES[b.rank] || 0;
+  
+  if (rankValueA !== rankValueB) {
+    return rankValueB - rankValueA;
+  }
+
+  // 3. Si mismo tier/rank, comparar por LP
+  if (a.lp !== b.lp) {
+    return b.lp - a.lp;
+  }
+
+  // 4. Si todo igual, comparar por winrate
+  const wrA = parseFloat(a.winrate.percentage);
+  const wrB = parseFloat(b.winrate.percentage);
+  
+  return wrB - wrA;
+}
+
+// ==========================================
 // Obtener PUUID desde gameName + tagLine
 // ==========================================
 async function fetchPuuid(gameName, tagLine) {
@@ -43,25 +100,20 @@ async function fetchAllQueueStats(puuid, gameName, region) {
     
     const url = `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}`;
     
-    console.log(`[RANKING] DEBUG - URL: ${url}`);
-    console.log(`[RANKING] DEBUG - Platform: ${platform}, Región: ${region}`);
+    console.log(`[RANKING] Fetching stats con plataforma: ${platform} (región: ${region})`);
     
     const response = await riotClient.get(url);
-    
-    console.log(`[RANKING] DEBUG - Response status: ${response.status}`);
-    console.log(`[RANKING] DEBUG - Response data (completo):`, JSON.stringify(response.data, null, 2));
-    console.log(`[RANKING] DEBUG - Array length: ${response.data?.length}`);
+    console.log(`[RANKING] ✅ Stats obtenidos: ${gameName}`);
     
     return response.data;
   } catch (err) {
-    console.log(`[RANKING] DEBUG - Error status: ${err.response?.status}`);
-    console.log(`[RANKING] DEBUG - Error data:`, err.response?.data);
     console.error(`[RANKING] Error fetching stats para ${gameName}:`, err.message);
     return [];
   }
 }
+
 // ==========================================
-// Calcular winrate (retorna objeto con %, wins, losses)
+// Calcular winrate
 // ==========================================
 function calculateWinrate(wins, losses) {
   if (wins === 0 && losses === 0) {
@@ -85,11 +137,7 @@ function calculateWinrate(wins, losses) {
 // Extraer y formatear SOLO + FLEX
 // ==========================================
 function extractAndFormatQueues(statsArray, gameName) {
-  
-  const solo = statsArray.find(q => {
-    return q.queueType === config.TRACKED_QUEUES.SOLO;
-  });
-  
+  const solo = statsArray.find(q => q.queueType === config.TRACKED_QUEUES.SOLO);
   const flex = statsArray.find(q => q.queueType === config.TRACKED_QUEUES.FLEX);
 
   const soloData = solo ? {
@@ -132,7 +180,7 @@ function extractAndFormatQueues(statsArray, gameName) {
 }
 
 // ==========================================
-// Construir ranking AMBAS queues
+// Construir ranking AMBAS queues (CON ORDENAMIENTO JERÁRQUICO)
 // ==========================================
 async function buildRankingBothQueues(users) {
   const soloRanking = [];
@@ -142,7 +190,6 @@ async function buildRankingBothQueues(users) {
 
   for (const user of users) {
     try {
-      // Pasar región a fetchAllQueueStats
       const stats = await fetchAllQueueStats(user.puuid, `${user.game_name}#${user.tag_line}`, user.region);
       const { soloData, flexData } = extractAndFormatQueues(stats, user.game_name);
 
@@ -153,13 +200,14 @@ async function buildRankingBothQueues(users) {
     }
   }
 
-  // Ordenar por LP descendente
-  soloRanking.sort((a, b) => b.lp - a.lp);
-  flexRanking.sort((a, b) => a.lp - b.lp);
+  // Ordenar con función jerárquica: Tier > Rank > LP > Winrate
+  soloRanking.sort(compareRanking);
+  flexRanking.sort(compareRanking);
 
   console.log(`[RANKING] ✅ Rankings construidos - ${soloRanking.length} usuarios`);
   return { soloRanking, flexRanking };
 }
+
 // ==========================================
 // Emoji por tier
 // ==========================================
@@ -181,7 +229,7 @@ function getTierEmoji(tier) {
 }
 
 // ==========================================
-// Formatear DOS embeds (LÍNEA ÚNICA CON W-L)
+// Formatear DOS embeds (CON EMOJIS EN TIER)
 // ==========================================
 function formatRankingEmbeds(soloRanking, flexRanking) {
   // ===== EMBED SOLO =====
@@ -192,7 +240,7 @@ function formatRankingEmbeds(soloRanking, flexRanking) {
     soloRanking.forEach((entry, index) => {
       const emoji = getTierEmoji(entry.tier);
       const winrateText = entry.winrate.text;
-      soloDescription += `**${index + 1}.** ${emoji} ${entry.name} - ${entry.tier} ${entry.rank} - **${entry.lp} LP** - ${winrateText}\n`;
+      soloDescription += `**${index + 1}.** ${emoji} ${entry.name} - ${emoji} ${entry.tier} ${entry.rank} - **${entry.lp} LP** - ${winrateText}\n`;
     });
   }
 
@@ -213,7 +261,7 @@ function formatRankingEmbeds(soloRanking, flexRanking) {
     flexRanking.forEach((entry, index) => {
       const emoji = getTierEmoji(entry.tier);
       const winrateText = entry.winrate.text;
-      flexDescription += `**${index + 1}.** ${emoji} ${entry.name} - ${entry.tier} ${entry.rank} - **${entry.lp} LP** - ${winrateText}\n`;
+      flexDescription += `**${index + 1}.** ${emoji} ${entry.name} - ${emoji} ${entry.tier} ${entry.rank} - **${entry.lp} LP** - ${winrateText}\n`;
     });
   }
 
