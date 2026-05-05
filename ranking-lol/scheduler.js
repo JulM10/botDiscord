@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const storage = require('./storage');
-const ranking = require('./ranking');
-const config = require('./config');
+const ranking = require('../ranking');
+const config = require('../config');
 
 let scheduledTask = null;
 
@@ -61,7 +61,6 @@ function initScheduler(client) {
 
   console.log('[SCHEDULER] ✅ Scheduler iniciado');
   console.log('[SCHEDULER] ⏰ Próxima ejecución: Cada lunes 5 PM ART (20:00 UTC)');
-  console.log('config.CRON_SCHEDULE:', config.CRON_SCHEDULE);
 }
 
 // ==========================================
