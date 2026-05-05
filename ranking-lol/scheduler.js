@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const storage = require('./storage');
-const ranking = require('../ranking');
-const config = require('../config');
+const ranking = require('./ranking');
+const config = require('./config');
 
 let scheduledTask = null;
 
