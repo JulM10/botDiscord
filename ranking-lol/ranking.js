@@ -2,16 +2,6 @@ const axios = require('axios');
 const config = require('./config');
 
 // ==========================================
-// Cliente HTTP con timeout
-// ==========================================
-const riotClient = axios.create({
-  timeout: config.TIMEOUT_API,
-  headers: {
-    'X-Riot-Token': config.RIOT_API_KEY,
-  },
-});
-
-// ==========================================
 // Mapeo de tier a valor numérico
 // ==========================================
 const TIER_VALUES = {
@@ -69,6 +59,16 @@ function compareRanking(a, b) {
 }
 
 // ==========================================
+// Cliente HTTP con timeout
+// ==========================================
+const riotClient = axios.create({
+  timeout: config.TIMEOUT_API,
+  headers: {
+    'X-Riot-Token': config.RIOT_API_KEY,
+  },
+});
+
+// ==========================================
 // Obtener PUUID desde gameName + tagLine
 // ==========================================
 async function fetchPuuid(gameName, tagLine) {
@@ -97,7 +97,7 @@ async function fetchAllQueueStats(puuid, gameName, region) {
     if (!platform) {
       throw new Error(`Región inválida: ${region}`);
     }
-    
+    // la api se llama league-v4
     const url = `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}`;
     
     console.log(`[RANKING] Fetching stats con plataforma: ${platform} (región: ${region})`);
@@ -229,7 +229,7 @@ function getTierEmoji(tier) {
 }
 
 // ==========================================
-// Formatear DOS embeds (CON EMOJIS EN TIER)
+// Formatear DOS embeds (LÍNEA ÚNICA CON W-L Y EMOJIS)
 // ==========================================
 function formatRankingEmbeds(soloRanking, flexRanking) {
   // ===== EMBED SOLO =====
@@ -277,6 +277,138 @@ function formatRankingEmbeds(soloRanking, flexRanking) {
   return [embedSolo, embedFlex];
 }
 
+// ==========================================
+// Comparar rankings y retornar con cambios
+// ==========================================
+function compareRankings(currentQueue, previousQueue, queueName) {
+  if (!previousQueue) {
+    // Sin comparación anterior
+    return currentQueue.map(entry => ({
+      ...entry,
+      lpDiff: 0,
+      winsGained: 0,
+      lossesGained: 0,
+      partiesPlayed: 0,
+      positionDiff: 0,
+      tierChanged: false,
+      noComparison: true
+    }));
+  }
+
+  return currentQueue.map(current => {
+    const previous = previousQueue.find(p => 
+      p.name.toLowerCase() === current.name.toLowerCase()
+    );
+
+    if (!previous) {
+      // Usuario nuevo
+      return {
+        ...current,
+        lpDiff: 0,
+        winsGained: current.wins,
+        lossesGained: current.losses,
+        partiesPlayed: current.wins + current.losses,
+        positionDiff: 0,
+        tierChanged: false,
+        isNew: true
+      };
+    }
+
+    // Calcular cambios
+    const lpDiff = current.lp - previous.lp;
+    const winsGained = current.wins - previous.wins;
+    const lossesGained = current.losses - previous.losses;
+    const partiesPlayed = winsGained + lossesGained;
+    const positionDiff = current.position - previous.position;
+    const tierChanged = current.tier !== previous.tier || current.rank !== previous.rank;
+
+    return {
+      ...current,
+      lpDiff,
+      winsGained,
+      lossesGained,
+      partiesPlayed,
+      positionDiff,
+      tierChanged,
+      previousTier: previous.tier,
+      previousRank: previous.rank,
+      previousLp: previous.lp,
+      previousPosition: previous.position,
+      previousWins: previous.wins,
+      previousLosses: previous.losses
+    };
+  });
+}
+
+// ==========================================
+// Formatear embed de diferencias (como ranking normal)
+// ==========================================
+function formatDifferenceEmbed(comparisonData, queueName, currentDate, previousDate) {
+  let description = '';
+
+  if (comparisonData.length > 0 && comparisonData[0].noComparison) {
+    description = '⚠️ Sin datos anteriores para comparar.\n\nGuarda otro snapshot para ver cambios.';
+  } else {
+    comparisonData.forEach((entry, index) => {
+      const emoji = getTierEmoji(entry.tier);
+      const winrateText = entry.winrate.text;
+      
+      // Línea principal: posición, tier, lp, winrate
+      let mainLine = `**${index + 1}.** ${emoji} ${entry.name} - ${entry.tier} ${entry.rank} - **${entry.lp} LP** - ${winrateText}\n`;
+
+      let changeDetails = '';
+
+      if (entry.noComparison) {
+        changeDetails = '  ⚠️ Sin comparación anterior\n';
+      } else if (entry.isNew) {
+        changeDetails = `  🆕 Nuevo en el ranking - 🎮 ${entry.partiesPlayed} partidas (${entry.winsGained}W-${entry.lossesGained}L)\n`;
+      } else {
+        // Detectar cambios de tier
+        if (entry.tierChanged) {
+          const tierEmoji = getTierEmoji(entry.previousTier);
+          changeDetails += `  📊 Tier: ${tierEmoji} ${entry.previousTier} ${entry.previousRank} → ${emoji} ${entry.tier} ${entry.rank}\n`;
+        }
+
+        // LP diff
+        if (entry.lpDiff > 0) {
+          changeDetails += `  📈 LP: +${entry.lpDiff} (${entry.previousLp} → ${entry.lp})\n`;
+        } else if (entry.lpDiff < 0) {
+          changeDetails += `  📉 LP: ${entry.lpDiff} (${entry.previousLp} → ${entry.lp})\n`;
+        } else {
+          changeDetails += `  ➡️ LP: Sin cambios (${entry.lp} LP)\n`;
+        }
+
+        // Posición
+        if (entry.positionDiff !== 0) {
+          if (entry.positionDiff < 0) {
+            changeDetails += `  🚀 Subió: #${entry.previousPosition} → #${entry.position}\n`;
+          } else {
+            changeDetails += `  📉 Bajó: #${entry.previousPosition} → #${entry.position}\n`;
+          }
+        }
+
+        // Partidas
+        if (entry.partiesPlayed > 0) {
+          changeDetails += `  🎮 Partidas: ${entry.partiesPlayed} (${entry.winsGained}W-${entry.lossesGained}L)\n`;
+        }
+      }
+
+      description += mainLine + changeDetails;
+    });
+  }
+
+  const embed = {
+    color: 0xffa500,
+    title: `📊 ${queueName} - CAMBIOS`,
+    description: description || 'Sin datos',
+    footer: {
+      text: `${previousDate ? previousDate + ' → ' : ''}${currentDate}`,
+    },
+  };
+
+  return embed;
+}
+
 module.exports = {
   fetchPuuid,
   fetchAllQueueStats,
@@ -284,4 +416,6 @@ module.exports = {
   extractAndFormatQueues,
   buildRankingBothQueues,
   formatRankingEmbeds,
+  compareRankings,
+  formatDifferenceEmbed,
 };

@@ -40,12 +40,16 @@ async function publishWeeklyRanking(client) {
     await channel.send({ embeds: [embedSolo] });
     console.log('[SCHEDULER] ✅ Embed SOLO publicado');
 
-    // Esperar 500ms para no spamear Discord
+    // Esperar 500ms
     await new Promise(r => setTimeout(r, 500));
 
     // Enviar FLEX
     await channel.send({ embeds: [embedFlex] });
-    console.log(`[SCHEDULER] ✅ Embed FLEX publicado - ${users.length} usuarios\n`);
+    console.log('[SCHEDULER] ✅ Embed FLEX publicado');
+
+    // 5. GUARDAR HISTÓRICO
+    await storage.saveRankingHistory(soloRanking, flexRanking);
+    console.log(`[SCHEDULER] ✅ Histórico guardado - ${users.length} usuarios\n`);
   } catch (err) {
     console.error('[SCHEDULER] ❌ Error:', err);
   }
@@ -55,12 +59,15 @@ async function publishWeeklyRanking(client) {
 // Inicializar scheduler
 // ==========================================
 function initScheduler(client) {
+  console.log(`[SCHEDULER] DEBUG - CRON_SCHEDULE: ${config.CRON_SCHEDULE}`);
+  
   scheduledTask = cron.schedule(config.CRON_SCHEDULE, () => {
+    console.log('[SCHEDULER] ⏰ EJECUTANDO (por cron)...');
     publishWeeklyRanking(client);
-  }, { timezone: 'UTC' });
+  });
 
   console.log('[SCHEDULER] ✅ Scheduler iniciado');
-  console.log('[SCHEDULER] ⏰ Próxima ejecución: Cada lunes 5 PM ART (20:00 UTC)');
+  console.log('[SCHEDULER] ⏰ Próxima ejecución: Cada martes 22:45 ART (01:45 UTC)');
 }
 
 // ==========================================

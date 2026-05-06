@@ -43,9 +43,13 @@ module.exports = {
   VALID_REGIONS: ['NA', 'BR', 'LAS', 'LAN', 'EUW', 'EUNE', 'KR'],
 
   // ===============================
-  // SCHEDULER (Lunes 5 PM ART = 20:00 UTC)
+  // SCHEDULER (Martes 22:45 ART = 01:45 UTC miércoles)
+  // Formato: 'minuto hora * * día'
   // ===============================
-  CRON_SCHEDULE: '0 20 * * 1',
+    // Para TESTING: cada 5 minutos
+  //CRON_SCHEDULE: '*/2 * * * *',
+  CRON_SCHEDULE: '00 19 * * 1',  // Martes 22:45 ART
+  CRON_SNAPSHOT: '00 13 * * *',  // 23:55 ART cada día
 
   // ===============================
   // LIMITES

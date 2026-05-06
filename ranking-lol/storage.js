@@ -15,37 +15,57 @@ async function ensureDataDir() {
 }
 
 // ==========================================
-// Cargar usuarios desde JSON
+// Cargar datos completos (users + history)
 // ==========================================
-async function loadUsers() {
+async function loadAllData() {
   try {
     await ensureDataDir();
     const data = await fs.readFile(DATA_PATH, 'utf-8');
-    return JSON.parse(data).users || [];
+    const parsed = JSON.parse(data);
+    return {
+      users: parsed.users || [],
+      rankings_history: parsed.rankings_history || {}
+    };
   } catch (err) {
     if (err.code === 'ENOENT') {
       console.log('[STORAGE] Creando users.json vacío');
-      await saveUsers([]);
-      return [];
+      await saveAllData([], {});
+      return { users: [], rankings_history: {} };
     }
-    console.error('[STORAGE] Error cargando users:', err);
-    return [];
+    console.error('[STORAGE] Error cargando datos:', err);
+    return { users: [], rankings_history: {} };
   }
 }
 
 // ==========================================
-// Guardar usuarios al JSON
+// Guardar datos completos
 // ==========================================
-async function saveUsers(users) {
+async function saveAllData(users, rankingsHistory) {
   try {
     await ensureDataDir();
-    const data = { users };
+    const data = { users, rankings_history: rankingsHistory };
     await fs.writeFile(DATA_PATH, JSON.stringify(data, null, 2));
     return true;
   } catch (err) {
-    console.error('[STORAGE] Error guardando users:', err);
+    console.error('[STORAGE] Error guardando datos:', err);
     return false;
   }
+}
+
+// ==========================================
+// Cargar usuarios
+// ==========================================
+async function loadUsers() {
+  const { users } = await loadAllData();
+  return users;
+}
+
+// ==========================================
+// Guardar usuarios
+// ==========================================
+async function saveUsers(users) {
+  const { rankings_history } = await loadAllData();
+  return await saveAllData(users, rankings_history);
 }
 
 // ==========================================
@@ -53,22 +73,19 @@ async function saveUsers(users) {
 // ==========================================
 async function addUser(gameName, tagLine, region, puuid) {
   try {
-    const users = await loadUsers();
+    const { users, rankings_history } = await loadAllData();
 
-    // Validar no exista (case-insensitive)
-    if (users.some(u => 
-      u.game_name.toLowerCase() === gameName.toLowerCase() && 
+    if (users.some(u =>
+      u.game_name.toLowerCase() === gameName.toLowerCase() &&
       u.tag_line.toLowerCase() === tagLine.toLowerCase()
     )) {
       return { success: false, message: '❌ Ya está en la lista' };
     }
 
-    // Validar límite
     if (users.length >= 40) {
       return { success: false, message: '❌ Límite de 40 usuarios alcanzado' };
     }
 
-    // Agregar
     users.push({
       game_name: gameName,
       tag_line: tagLine,
@@ -77,7 +94,7 @@ async function addUser(gameName, tagLine, region, puuid) {
       added_date: new Date().toISOString().split('T')[0],
     });
 
-    await saveUsers(users);
+    await saveAllData(users, rankings_history);
     console.log(`[STORAGE] ✅ Agregado: ${gameName}#${tagLine} (${region})`);
     return { success: true, message: `✅ ${gameName}#${tagLine} (${region}) agregado al ranking` };
   } catch (err) {
@@ -91,19 +108,19 @@ async function addUser(gameName, tagLine, region, puuid) {
 // ==========================================
 async function removeUser(gameName, tagLine) {
   try {
-    let users = await loadUsers();
+    const { users, rankings_history } = await loadAllData();
     const initialLength = users.length;
 
-    users = users.filter(
-      u => !(u.game_name.toLowerCase() === gameName.toLowerCase() && 
-             u.tag_line.toLowerCase() === tagLine.toLowerCase())
+    const filtered = users.filter(
+      u => !(u.game_name.toLowerCase() === gameName.toLowerCase() &&
+        u.tag_line.toLowerCase() === tagLine.toLowerCase())
     );
 
-    if (users.length === initialLength) {
+    if (filtered.length === initialLength) {
       return { success: false, message: '❌ No encontrado' };
     }
 
-    await saveUsers(users);
+    await saveAllData(filtered, rankings_history);
     console.log(`[STORAGE] ✅ Removido: ${gameName}#${tagLine}`);
     return { success: true, message: `✅ ${gameName}#${tagLine} removido del ranking` };
   } catch (err) {
@@ -116,11 +133,87 @@ async function removeUser(gameName, tagLine) {
 // Listar usuarios
 // ==========================================
 async function listUsers() {
+  const { users } = await loadAllData();
+  return users;
+}
+
+// ==========================================
+// Guardar ranking histórico
+// ==========================================
+async function saveRankingHistory(soloRanking, flexRanking) {
   try {
-    return await loadUsers();
+    const { users, rankings_history } = await loadAllData();
+
+    // Fecha actual
+    const today = new Date().toISOString().split('T')[0];
+
+    // Agregar posiciones al ranking
+    const soloWithPosition = soloRanking.map((entry, index) => ({
+      ...entry,
+      position: index + 1
+    }));
+
+    const flexWithPosition = flexRanking.map((entry, index) => ({
+      ...entry,
+      position: index + 1
+    }));
+
+    // Guardar histórico de hoy
+    rankings_history[today] = {
+      solo: soloWithPosition,
+      flex: flexWithPosition
+    };
+
+    // Limpiar histórico > 4 snapshots
+    const allDates = Object.keys(rankings_history).sort().reverse();
+    if (allDates.length > 4) {
+      // Mantener solo últimos 4 snapshots
+      allDates.slice(4).forEach(date => {
+        delete rankings_history[date];
+      });
+    }
+
+    await saveAllData(users, rankings_history);
+    console.log(`[STORAGE] ✅ Histórico guardado: ${today}`);
+    return true;
   } catch (err) {
-    console.error('[STORAGE] Error listando usuarios:', err);
-    return [];
+    console.error('[STORAGE] Error guardando histórico:', err);
+    return false;
+  }
+}
+
+// ==========================================
+// Obtener histórico de ranking
+// ==========================================
+// ==========================================
+// Obtener histórico de ranking (CON LOGGING)
+// ==========================================
+async function getRankingHistory() {
+  try {
+    const { rankings_history } = await loadAllData();
+    const dates = Object.keys(rankings_history).sort().reverse();
+    
+    console.log(`[STORAGE] DEBUG - Fechas en histórico:`, dates);
+    console.log(`[STORAGE] DEBUG - Total snapshots: ${dates.length}`);
+    console.log(`[STORAGE] DEBUG - Fecha actual (para comparar): ${dates[0]}`);
+    console.log(`[STORAGE] DEBUG - Fecha anterior (para comparar): ${dates[1]}`);
+    
+    return {
+      current: rankings_history[dates[0]] || null,
+      previous: rankings_history[dates[1]] || null,
+      currentDate: dates[0],
+      previousDate: dates[1],
+      allDates: dates
+    };
+  } catch (err) {
+    console.error('[STORAGE] Error obteniendo histórico:', err);
+    return {
+      current: null,
+      previous: null,
+      currentDate: null,
+      previousDate: null,
+      allDates: []
+    };
   }
 }
 
@@ -130,4 +223,8 @@ module.exports = {
   addUser,
   removeUser,
   listUsers,
+  saveRankingHistory,
+  getRankingHistory,
+  loadAllData,
+  saveAllData,
 };
