@@ -62,7 +62,7 @@ function compareRanking(a, b) {
 // Cliente HTTP con timeout
 // ==========================================
 const riotClient = axios.create({
-  timeout: config.TIMEOUT_API,
+  timeout: config.TIMEOUT_API || 10000,  // 10 segundos
   headers: {
     'X-Riot-Token': config.RIOT_API_KEY,
   },

@@ -48,29 +48,41 @@ client.once('ready', async () => {
 // ==========================================
 // Evento: Interacción (slash command)
 // ==========================================
-client.on('interactionCreate', async interaction => {
+// ==========================================
+// Manejar interacciones (slash commands)
+// ==========================================
+client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  const commandName = interaction.commandName;
-  const handler = handlers[commandName];
-
-  if (!handler) {
-    console.error(`[BOT] ❌ No hay handler para comando: ${commandName}`);
-    return;
-  }
+  console.log(`[BOT] 📨 Ejecutando comando: /${interaction.commandName}`);
 
   try {
-    console.log(`[BOT] 📨 Ejecutando comando: /${commandName}`);
+    const handler = commandHandlers[interaction.commandName];
+
+    if (!handler) {
+      console.warn(`[BOT] ⚠️ Comando no encontrado: ${interaction.commandName}`);
+      return;
+    }
+
+    // Ejecutar handler
     await handler(interaction);
   } catch (err) {
-    console.error(`[BOT] ❌ Error ejecutando /${commandName}:`, err);
+    console.error(`[BOT] ❌ Error ejecutando /${interaction.commandName}:`, err);
+    
     try {
-      await interaction.reply({
-        content: '❌ Error interno al ejecutar comando',
-        ephemeral: true,
-      });
+      // Intentar responder si aún no se respondió
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: '❌ Error procesando el comando. Intenta de nuevo.',
+          flags: 64,  // ephemeral
+        });
+      } else {
+        await interaction.editReply({
+          content: '❌ Error procesando el comando. Intenta de nuevo.',
+        });
+      }
     } catch (replyErr) {
-      console.error('[BOT] ❌ Error enviando respuesta:', replyErr);
+      console.error(`[BOT] ❌ Error enviando respuesta de error:`, replyErr.message);
     }
   }
 });

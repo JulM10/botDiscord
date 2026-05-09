@@ -146,20 +146,27 @@ async function executeRanking(interaction) {
 
   await interaction.deferReply();
 
-  const users = await storage.listUsers();
+  try {
+    const users = await storage.listUsers();
 
-  if (users.length === 0) {
+    if (users.length === 0) {
+      return interaction.editReply({
+        content: 'No hay usuarios en tracking',
+      });
+    }
+
+    const { soloRanking, flexRanking } = await ranking.buildRankingBothQueues(users);
+    const [embedSolo, embedFlex] = ranking.formatRankingEmbeds(soloRanking, flexRanking);
+
     return interaction.editReply({
-      content: 'No hay usuarios en tracking',
+      embeds: [embedSolo, embedFlex],
+    });
+  } catch (err) {
+    console.error('[COMMAND] Error ejecutando /ranking:', err);
+    return interaction.editReply({
+      content: '❌ Error al obtener el ranking. Intenta de nuevo.',
     });
   }
-
-  const { soloRanking, flexRanking } = await ranking.buildRankingBothQueues(users);
-  const [embedSolo, embedFlex] = ranking.formatRankingEmbeds(soloRanking, flexRanking);
-
-  return interaction.editReply({
-    embeds: [embedSolo, embedFlex],
-  });
 }
 
 // ==========================================
@@ -167,13 +174,7 @@ async function executeRanking(interaction) {
 // ==========================================
 const diferenciaSemanalCommand = new SlashCommandBuilder()
   .setName('diferencia-entre-ranking')
-  .setDescription('Ver cambios del ranking ')
-  .addStringOption(option =>
-    option
-      .setName('usuario')
-      .setDescription('(Opcional) Usuario específico')
-      .setRequired(false)
-  );
+  .setDescription('Ver cambios del ranking entre snapshots');
 
 async function executeDiferenciaSemanal(interaction) {
   console.log('[COMMAND] /diferencia-entre-ranking');
@@ -184,15 +185,13 @@ async function executeDiferenciaSemanal(interaction) {
 
   if (!current) {
     return interaction.editReply({
-      content: '❌ No hay datos de ranking disponibles aún. Espera al próximo ranking semanal.',
+      content: '❌ No hay datos de ranking disponibles aún. Usa /guardar-ranking primero.',
     });
   }
 
-  // Comparar SOLO con datos en el formato del ranking
   const soloComparisons = ranking.compareRankings(current.solo, previous?.solo, 'SOLO 5x5');
   const soloEmbed = ranking.formatDifferenceEmbed(soloComparisons, 'SOLO 5x5', currentDate, previousDate);
 
-  // Comparar FLEX con datos en el formato del ranking
   const flexComparisons = ranking.compareRankings(current.flex, previous?.flex, 'FLEX 5x5');
   const flexEmbed = ranking.formatDifferenceEmbed(flexComparisons, 'FLEX 5x5', currentDate, previousDate);
 
@@ -202,11 +201,11 @@ async function executeDiferenciaSemanal(interaction) {
 }
 
 // ==========================================
-// /diferencia (usuario específico)
+// /diferencia
 // ==========================================
 const diferenciaUsuarioCommand = new SlashCommandBuilder()
   .setName('diferencia')
-  .setDescription('Ver cambios de un usuario específico entre semanas')
+  .setDescription('Ver cambios de un usuario específico')
   .addStringOption(option =>
     option
       .setName('usuario')
@@ -229,11 +228,9 @@ async function executeDiferenciaUsuario(interaction) {
     });
   }
 
-  // Buscar usuario en SOLO
   const currentSolo = current.solo.find(u => u.name.toLowerCase() === userName.toLowerCase());
   const previousSolo = previous?.solo.find(u => u.name.toLowerCase() === userName.toLowerCase());
 
-  // Buscar usuario en FLEX
   const currentFlex = current.flex.find(u => u.name.toLowerCase() === userName.toLowerCase());
   const previousFlex = previous?.flex.find(u => u.name.toLowerCase() === userName.toLowerCase());
 
@@ -243,10 +240,8 @@ async function executeDiferenciaUsuario(interaction) {
     });
   }
 
-  // Construir respuesta
   let description = `**Usuario:** ${userName}\n\n`;
 
-  // ===== SOLO 5x5 =====
   if (currentSolo) {
     description += `**SOLO 5x5:**\n`;
     description += `Actual: ${currentSolo.tier} ${currentSolo.rank} - ${currentSolo.lp} LP (Posición #${currentSolo.position})\n`;
@@ -257,15 +252,11 @@ async function executeDiferenciaUsuario(interaction) {
       
       description += `Anterior: ${previousSolo.tier} ${previousSolo.rank} - ${previousSolo.lp} LP (Posición #${previousSolo.position})\n`;
       
-      // Detectar cambios de tier
-      const tierChanged = currentSolo.tier !== previousSolo.tier;
-      const rankChanged = currentSolo.rank !== previousSolo.rank;
-      
-      if (tierChanged) {
+      if (currentSolo.tier !== previousSolo.tier) {
         description += `📊 Cambio de Tier: ${previousSolo.tier} → ${currentSolo.tier}\n`;
       }
       
-      if (rankChanged) {
+      if (currentSolo.rank !== previousSolo.rank) {
         description += `🏆 Cambio de Rank: ${previousSolo.rank} → ${currentSolo.rank}\n`;
       }
       
@@ -282,7 +273,6 @@ async function executeDiferenciaUsuario(interaction) {
     description += `\n`;
   }
 
-  // ===== FLEX 5x5 =====
   if (currentFlex) {
     description += `**FLEX 5x5:**\n`;
     description += `Actual: ${currentFlex.tier} ${currentFlex.rank} - ${currentFlex.lp} LP (Posición #${currentFlex.position})\n`;
@@ -293,15 +283,11 @@ async function executeDiferenciaUsuario(interaction) {
       
       description += `Anterior: ${previousFlex.tier} ${previousFlex.rank} - ${previousFlex.lp} LP (Posición #${previousFlex.position})\n`;
       
-      // Detectar cambios de tier
-      const tierChanged = currentFlex.tier !== previousFlex.tier;
-      const rankChanged = currentFlex.rank !== previousFlex.rank;
-      
-      if (tierChanged) {
+      if (currentFlex.tier !== previousFlex.tier) {
         description += `📊 Cambio de Tier: ${previousFlex.tier} → ${currentFlex.tier}\n`;
       }
       
-      if (rankChanged) {
+      if (currentFlex.rank !== previousFlex.rank) {
         description += `🏆 Cambio de Rank: ${previousFlex.rank} → ${currentFlex.rank}\n`;
       }
       
@@ -332,7 +318,7 @@ async function executeDiferenciaUsuario(interaction) {
 // ==========================================
 const guardarRankingCommand = new SlashCommandBuilder()
   .setName('guardar-ranking')
-  .setDescription('Guardar snapshot actual del ranking para comparar después');
+  .setDescription('Guardar snapshot actual del ranking');
 
 async function executeGuardarRanking(interaction) {
   console.log('[COMMAND] /guardar-ranking');
@@ -348,13 +334,9 @@ async function executeGuardarRanking(interaction) {
   }
 
   try {
-    // Construir rankings
     const { soloRanking, flexRanking } = await ranking.buildRankingBothQueues(users);
-
-    // Guardar histórico
     await storage.saveRankingHistory(soloRanking, flexRanking);
 
-    // Obtener histórico para mostrar estado
     const { allDates, currentDate } = await storage.getRankingHistory();
 
     let snapshotsText = '';
@@ -369,7 +351,7 @@ async function executeGuardarRanking(interaction) {
       .setColor(0x00ff00)
       .setTitle('✅ Ranking Guardado')
       .setDescription(`Se guardó el snapshot del ranking actual.\n\nFecha: ${currentDate}\nUsuarios: ${users.length}${snapshotsText}`)
-      .setFooter({ text: 'Usa /diferencia-entre-semanas para ver los cambios' });
+      .setFooter({ text: 'Usa /diferencia-entre-ranking para ver los cambios' });
 
     return interaction.editReply({
       embeds: [embed],

@@ -10,14 +10,14 @@ module.exports = {
   // ===============================
   // DISCORD
   // ===============================
-  CHANNEL_ID: '1501013275872198726', // Tu #ranking-lol
-  GUILD_ID: '622144363018977289',   // Tu servidor
+  CHANNEL_ID: '889261192546246716', // Tu #ranking-lol
+  GUILD_ID: '653356615944241158',   // Tu servidor
 
   // ===============================
   // RIOT API
   // ===============================
   RIOT_ACCOUNT_API: 'https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id',
-  
+
   // Mapeo de región a plataforma para League API
   REGION_TO_PLATFORM: {
     'NA': 'na1',
@@ -46,7 +46,7 @@ module.exports = {
   // SCHEDULER (Martes 22:45 ART = 01:45 UTC miércoles)
   // Formato: 'minuto hora * * día'
   // ===============================
-    // Para TESTING: cada 5 minutos
+  // Para TESTING: cada 5 minutos
   //CRON_SCHEDULE: '*/2 * * * *',
   CRON_SCHEDULE: '00 19 * * 1',  // Martes 22:45 ART
   CRON_SNAPSHOT: '00 13 * * *',  // 23:55 ART cada día
@@ -55,6 +55,6 @@ module.exports = {
   // LIMITES
   // ===============================
   MAX_USERS: 40,
-  TIMEOUT_API: 5000,
+  TIMEOUT_API: 10000,  // 10 segundos en lugar de 5000
   RETRY_ATTEMPTS: 2,
 };
