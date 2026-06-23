@@ -1,53 +1,56 @@
-const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes } = require('discord.js');
+const { commands, handlers: commandHandlers } = require('./commands');
+const { initScheduler, stopScheduler } = require('./scheduler');
 const config = require('./config');
-const { commands, handlers } = require('./commands');
-const scheduler = require('./scheduler');
-
-console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('  🤖 LOL Ranking Bot - Iniciando...');
-console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 // ==========================================
-// Crear cliente Discord
+// Crear cliente
 // ==========================================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
   ],
 });
 
 // ==========================================
-// Evento: Bot listo
+// Bot listo
 // ==========================================
-client.once('ready', async () => {
-  console.log(`[BOT] ✅ Conectado como ${client.user.tag}\n`);
-
-  // Registrar slash commands
-  const guild = client.guilds.cache.get(config.GUILD_ID);
-
-  if (!guild) {
-    console.error('[BOT] ❌ Servidor (GUILD_ID) no encontrado');
-    console.error('[BOT] ⚠️  Verifica que GUILD_ID en config.js sea correcto');
-    return;
-  }
-
-  try {
-    await guild.commands.set(commands);
-    console.log('[BOT] ✅ Slash commands registrados\n');
-  } catch (err) {
-    console.error('[BOT] ❌ Error registrando comandos:', err);
-  }
+client.on('ready', () => {
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('  🤖 LOL Ranking Bot - Iniciando...');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`[BOT] ✅ Conectado como ${client.user.tag}`);
 
   // Iniciar scheduler
-  scheduler.initScheduler(client);
+  initScheduler(client);
 
-  console.log('[BOT] ✅ Bot completamente listo\n');
+  console.log('[BOT] ✅ Bot completamente listo');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 });
 
 // ==========================================
-// Evento: Interacción (slash command)
+// Registrar slash commands
 // ==========================================
+async function registerCommands() {
+  try {
+    const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN);
+
+    console.log('[BOT] 📝 Registrando slash commands...');
+
+    const commandData = commands.map(cmd => cmd.toJSON());
+
+    await rest.put(Routes.applicationGuildCommands(client.user.id, config.GUILD_ID), {
+      body: commandData,
+    });
+
+    console.log('[BOT] ✅ Slash commands registrados');
+  } catch (err) {
+    console.error('[BOT] ❌ Error registrando commands:', err);
+  }
+}
+
 // ==========================================
 // Manejar interacciones (slash commands)
 // ==========================================
@@ -68,7 +71,7 @@ client.on('interactionCreate', async (interaction) => {
     await handler(interaction);
   } catch (err) {
     console.error(`[BOT] ❌ Error ejecutando /${interaction.commandName}:`, err);
-    
+
     try {
       // Intentar responder si aún no se respondió
       if (!interaction.replied && !interaction.deferred) {
@@ -88,20 +91,21 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ==========================================
-// Evento: Error del cliente
-// ==========================================
-client.on('error', err => {
-  console.error('[BOT] ❌ CLIENT ERROR:', err);
-});
-
-// ==========================================
-// Evento: Rejection no manejada
-// ==========================================
-process.on('unhandledRejection', err => {
-  console.error('[BOT] ❌ UNHANDLED REJECTION:', err);
-});
-
-// ==========================================
-// Conectar bot
+// Login y registrar commands
 // ==========================================
 client.login(config.DISCORD_TOKEN);
+
+client.once('ready', () => {
+  registerCommands();
+});
+
+// ==========================================
+// Manejo de errores no capturados
+// ==========================================
+process.on('unhandledRejection', (err) => {
+  console.error('[BOT] ❌ Promise rechazada sin capturar:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[BOT] ❌ Error no capturado:', err);
+});
